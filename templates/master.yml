@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  # Domain: example.com
+  DomainName:
+    Type: String
+    Description: "The base domain name for the web site (no 'www')"
+    MinLength: 4
+    MaxLength: 253
+    AllowedPattern: "[a-z0-9]+[-.a-z0-9]*(\\.[a-z][a-z]+)+"
+    ConstraintDescription: "Provide a valid domain name using only lowercase letters, numbers, and dash (-)"
+  PreExistingLogsBucket:
+    Description: "Optional name of pre-existing access logs bucket. Leave empty to have access logs bucket created and managed by this stack."
+    Type: String
+    Default: ""
+  CertificateArn:
+    Description: "existing ACM certifcate arn"
+    Type: String
+
+Conditions:
+  NeedsNewLogsBucket: !Equals [!Ref PreExistingLogsBucket, ""]
+
+Resources:
+  intercomDistribution:
+    Type: 'AWS::CloudFront::Distribution'
+    Properties:
+      DistributionConfig:
+        Origins:
+        - DomainName: custom.intercom.help
+          Id: IntercomOrigin
+          CustomOriginConfig:
+            HTTPPort: '80'
+            HTTPSPort: '443'
+            OriginProtocolPolicy: http-only
+            OriginSSLProtocols:
+              - TLSv1.2
+              - TLSv1.1
+        Enabled: 'true'
+        Comment: Intercom redirect
+        DefaultRootObject: /
+        Logging:
+          IncludeCookies: 'true'
+          Bucket: !Join ["", [!If [NeedsNewLogsBucket, !Ref LogsBucket, !Ref PreExistingLogsBucket], ".s3.amazonaws.com"]]
+          Prefix: !Sub "logs/cloudfront/${DomainName}/"
+        Aliases:
+        - !Ref DomainName
+        DefaultCacheBehavior:
+          TargetOriginId: IntercomOrigin
+          SmoothStreaming: 'false'
+          ForwardedValues:
+            QueryString: 'true'
+            Cookies:
+              Forward: all
+            Headers:
+              - "*"
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          ViewerProtocolPolicy: redirect-to-https
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1_2016
+        HttpVersion: http2
+
+  # Bucket for CloudFront and S3 access logs: logs.example.com
+  LogsBucket:
+    Condition: NeedsNewLogsBucket
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Sub "logs.${DomainName}"
+      AccessControl: LogDeliveryWrite
+    DeletionPolicy: Retain

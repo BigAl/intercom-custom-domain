@@ -36,7 +36,6 @@ Resources:
               - TLSv1.1
         Enabled: 'true'
         Comment: Intercom redirect
-        DefaultRootObject: /
         Logging:
           IncludeCookies: 'true'
           Bucket: !Join ["", [!If [NeedsNewLogsBucket, !Ref LogsBucket, !Ref PreExistingLogsBucket], ".s3.amazonaws.com"]]
